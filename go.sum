@@ -1,0 +1,4 @@
+github.com/go-tpm2/common v0.1.0 h1:VVxswlksVMyCKE9Ra0k1m8l22YSmCk2je8KGiwtY9bs=
+github.com/go-tpm2/common v0.1.0/go.mod h1:YAn0c2kmze7OPO4Myn9FaEk/c+EayBap0dj7rnROcHs=
+github.com/go-tpm2/tpm2 v0.5.0 h1:BrcTd4W2YoJb74+058HbZ9YFB+HtwDHCK8GX4qv5AxQ=
+github.com/go-tpm2/tpm2 v0.5.0/go.mod h1:ovPqrMNpQ2cBxLTb7XOoOaFr40wPYutTQgQvv8ko4Gk=
