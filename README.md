@@ -92,6 +92,34 @@ resp.EventLog = eventLog                   // crypto-agile TCG log
 granted, err := v.Admit(node.AKName(), resp)
 ```
 
+### Pluggable challenge state for HA (v0.3.0)
+
+The Verifier's single-use challenge state — the enrolment activation secret and
+the admission nonce — defaults to an in-memory `MemPendingStore`. For a
+multi-replica (HA) control plane, back it with a shared `PendingStore` (e.g.
+etcd) so a `Challenge` served by one replica is admissible by another:
+
+```go
+type PendingStore interface {
+    PutEnroll(akName, secret []byte) error            // stash; overwrite prior
+    TakeEnroll(akName []byte) (secret []byte, ok bool) // consume, single-use
+    PutNonce(akName []byte, nonce []byte) error
+    TakeNonce(akName []byte) (nonce []byte, ok bool)   // consume, single-use
+}
+
+// Default (in-memory) — NewVerifier uses this:
+v := attest.NewVerifier(reg, policy, attest.RandNonce)
+// HA — back the challenge state with a shared store:
+v := attest.NewVerifierWithStore(reg, policy, attest.RandNonce, etcdStore)
+```
+
+The interface is deliberately **time/TTL-agnostic**: the backing store owns
+expiry (e.g. etcd leases), so `attest` imports no clock and the Node side stays
+import-clean for `GOOS=tamago`. `Take*` is read-and-remove, so a challenge is
+consumed exactly once regardless of which replica serves the follow-up. This is
+fully backward-compatible — `NewVerifier(reg, policy, nonce)` is unchanged and
+uses the in-memory default.
+
 ## Wire format
 
 A small, versioned, big-endian, length-prefixed codec (`codec.go`): every frame
