@@ -57,6 +57,31 @@
 //     trusted only because the signature and the quoted pcrDigest were verified
 //     first.
 //
+//   - Event-log replay policy (v0.2.0). EventLogPolicy admits a node by REPLAYING
+//     its TCG measured-boot event log (the crypto-agile TCG_PCR_EVENT2 stream,
+//     TCG PC Client Platform Firmware Profile) rather than matching whole-PCR
+//     golden digests. Its Matches: (1) parses the log (ParseEventLog) and folds
+//     each event's digest into a virtual PCR — pcr = SHA256(pcr || digest),
+//     starting from all-zero (ReplayPCRs); (2) requires the replayed PCRs to
+//     EQUAL the attested PCRs (ErrEventLogMismatch otherwise) — this is what
+//     binds the otherwise-untrusted log to the cryptographically-verified quote,
+//     so a tampered log whose replay diverges is rejected; (3) requires every
+//     event to be on an allowlist of approved (PCRindex, digest) measurements
+//     (ErrUnapprovedMeasurement, naming the offending event, otherwise).
+//
+//   - Allowlist vs. golden tradeoff. A GoldenPolicy entry is the FINAL PCR
+//     value, i.e. the hash chain over every measurement that PCR accumulated;
+//     changing any one component (a kernel, a shim, a config blob) changes the
+//     final digest, so the operator must recompute and redeploy the golden PCR
+//     for every platform/image permutation. An EventLogPolicy allowlist instead
+//     approves INDIVIDUAL measurements: rolling out a new kernel image is ONE
+//     new allowlist entry (its measurement), and any platform whose log is built
+//     from approved components — in any valid order the replay reproduces — is
+//     admitted. The cost is that the verifier now parses and replays an
+//     attacker-influenced log; the replay-equality check (2) is the mitigation
+//     that keeps the log honest. Use GoldenPolicy for a small, frozen fleet;
+//     EventLogPolicy when images update independently and often.
+//
 //   - TOCTOU caveat. A Quote attests the platform's BOOT-TIME measurements (the
 //     PCR state at quote time), NOT its runtime state. An approved boot says
 //     nothing about post-boot compromise; attestation gates admission, it is not

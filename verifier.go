@@ -192,7 +192,9 @@ func (v *Verifier) Challenge(req AdmissionRequest) (AdmissionChallenge, error) {
 //  2. checks the attest's extraData equals exactly the issued nonce
 //     (anti-replay — VerifyQuote returns the parsed AttestInfo but does NOT
 //     check the nonce, so it is checked explicitly here);
-//  3. applies the boot Policy to the claimed PCRs.
+//  3. applies the boot Policy to the claimed PCRs, passing the attested event
+//     log too (an EventLogPolicy replays it and binds it to these PCRs; a
+//     GoldenPolicy ignores it).
 //
 // Each failure returns a precise sentinel. The pending nonce is consumed on
 // every call so a quote cannot be replayed against the same challenge.
@@ -244,7 +246,10 @@ func (v *Verifier) Admit(akName []byte, resp AdmissionResponse) (bool, error) {
 		return false, ErrStaleNonce
 	}
 
-	if err := v.policy.Matches(resp.PCRs); err != nil {
+	// The event log (if any) is fed to the Policy alongside the verified PCRs.
+	// An EventLogPolicy replays it and binds it to these PCRs; value-only
+	// policies (GoldenPolicy) ignore it.
+	if err := v.policy.Matches(resp.PCRs, resp.EventLog); err != nil {
 		return false, err
 	}
 	return true, nil

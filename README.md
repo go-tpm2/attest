@@ -69,7 +69,27 @@ adChal, _ := v.Challenge(node.AdmissionRequest())
 resp, _ := node.RespondAdmission(adChal)  // TPM2_Quote + PCR_Read
 granted, err := v.Admit(node.AKName(), resp)
 // err is one of: ErrUnboundAK, ErrStaleNonce, ErrQuoteSignature,
-// ErrPCRDigestMismatch, ErrUntrustedBoot (errors.As → *UntrustedBootError).
+// ErrPCRDigestMismatch, ErrUntrustedBoot (errors.As → *UntrustedBootError),
+// ErrEventLogMismatch, ErrUnapprovedMeasurement (errors.As →
+// *UnapprovedMeasurementError) when an EventLogPolicy is installed.
+```
+
+### Event-log replay policy (v0.2.0)
+
+```go
+// Approve individual measurements instead of a whole-PCR golden digest.
+elp := attest.NewEventLogPolicy().
+    RestrictPCRs(16).                      // gate only on PCR 16
+    AllowMeasurement(16, shimDigest).      // each is one allowlist entry
+    AllowMeasurement(16, grubDigest).
+    AllowMeasurement(16, kernelDigest)
+v.SetPolicy(elp)
+
+// The node attaches its measured-boot log; Admit replays it, requires the
+// replay to equal the verified PCRs, and requires every event allowlisted.
+resp, _ := node.RespondAdmission(adChal)
+resp.EventLog = eventLog                   // crypto-agile TCG log
+granted, err := v.Admit(node.AKName(), resp)
 ```
 
 ## Wire format
@@ -90,8 +110,18 @@ version, wrong message kind, and trailing bytes; every message round-trips.
   quote's `extraData`; `Admit` checks it and consumes it, so a captured quote
   cannot be replayed.
 - **Golden PCR policy.** `GoldenPolicy` admits only if every required PCR equals
-  its golden digest, naming the first mismatch in `*UntrustedBootError`. (A TCG
-  event-log-replay `EventLogPolicy` is the documented v0.2 follow-up.)
+  its golden digest, naming the first mismatch in `*UntrustedBootError`.
+- **Event-log replay policy (v0.2.0).** `EventLogPolicy` admits by **replaying**
+  the node's TCG measured-boot event log (the crypto-agile `TCG_PCR_EVENT2`
+  stream, TCG PC Client Platform Firmware Profile) instead of matching
+  whole-PCR golden digests. `Matches` parses the log, folds each event into a
+  virtual PCR (`pcr = SHA256(pcr ‖ digest)` from all-zero), requires the
+  replayed PCRs to **equal** the attested PCRs (`ErrEventLogMismatch` otherwise —
+  this binds the otherwise-untrusted log to the verified quote), and requires
+  every event to be on an **allowlist** of approved `(PCR, digest)` measurements
+  (`ErrUnapprovedMeasurement`, naming the offending event, otherwise). Rolling
+  out a new image is **one** allowlist entry, not a per-platform golden-PCR
+  recompute. See `Policy.Matches(pcrs, eventLog)` (the v0.2.0 signature).
 - **TOCTOU caveat.** A Quote attests **boot-time** measurements, not runtime
   state; attestation gates admission, it is not a continuous integrity monitor.
   Pair it with short admission leases / re-attestation.
@@ -100,10 +130,13 @@ version, wrong message kind, and trailing bytes; every message round-trips.
 
 Pure Go, `CGO_ENABLED=0`, no workspace (`GOWORK=off`), BSD-3 (SPDX per file),
 **100 % statement coverage** (CI gate). Validated end-to-end against a real
-**swtpm** in [`go-tpm2/validate`](https://github.com/go-tpm2/validate)
-(`cmd/attestvalidate`): the full handshake runs in a tamago/amd64 guest against
-live TPM crypto, asserting ADMITTED and rejecting bad-PCR, stale-nonce, and
-wrong-AK.
+**swtpm** in [`go-tpm2/validate`](https://github.com/go-tpm2/validate): the full
+handshake runs in a tamago/amd64 guest against live TPM crypto. `cmd/attestvalidate`
+asserts ADMITTED and rejects bad-PCR, stale-nonce, and wrong-AK; `cmd/attesteventlog`
+(v0.2.0) does several real `PCR_Extend`s, builds a crypto-agile TCG event log of
+them, and asserts the `EventLogPolicy` replay equals the real swtpm PCRs and is
+allowlisted (ADMITTED), then rejects an unapproved measurement
+(`ErrUnapprovedMeasurement`) and a tampered log (`ErrEventLogMismatch`).
 
 Sibling repos: [`common`](https://github.com/go-tpm2/common),
 [`tpm2`](https://github.com/go-tpm2/tpm2),
