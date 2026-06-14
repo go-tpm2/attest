@@ -149,11 +149,11 @@ func TestParseTruncatedAlgList(t *testing.T) {
 	// numberOfAlgorithms = 2, but supply only the first pair's bytes.
 	var spec []byte
 	spec = append(spec, specIDSignature...)
-	spec = common.PutU32(spec, 0)          // platformClass
+	spec = putLE32(spec, 0)          // platformClass
 	spec = append(spec, 0, 2, 0, 2)        // minor/major/errata/uintnSize
-	spec = common.PutU32(spec, 2)          // numberOfAlgorithms = 2
-	spec = common.PutU16(spec, sha256Alg)  // alg[0]
-	spec = common.PutU16(spec, sha256Size) // size[0] (then truncated)
+	spec = putLE32(spec, 2)          // numberOfAlgorithms = 2
+	spec = putLE16(spec, sha256Alg)  // alg[0]
+	spec = putLE16(spec, sha256Size) // size[0] (then truncated)
 	log := wrapLegacy(spec)
 	if _, err := ParseEventLog(log); err != ErrBadSpecID {
 		t.Fatalf("got %v want ErrBadSpecID", err)
@@ -164,9 +164,9 @@ func TestParseTruncatedAlgList(t *testing.T) {
 func TestParseTruncatedAlgID(t *testing.T) {
 	var spec []byte
 	spec = append(spec, specIDSignature...)
-	spec = common.PutU32(spec, 0)
+	spec = putLE32(spec, 0)
 	spec = append(spec, 0, 2, 0, 2)
-	spec = common.PutU32(spec, 1)   // 1 algorithm
+	spec = putLE32(spec, 1)   // 1 algorithm
 	spec = common.PutU8(spec, 0x00) // 1 stray byte: cannot read u16 algID
 	log := wrapLegacy(spec)
 	if _, err := ParseEventLog(log); err != ErrBadSpecID {
@@ -178,11 +178,11 @@ func TestParseTruncatedAlgID(t *testing.T) {
 func TestParseMissingVendorInfo(t *testing.T) {
 	var spec []byte
 	spec = append(spec, specIDSignature...)
-	spec = common.PutU32(spec, 0)
+	spec = putLE32(spec, 0)
 	spec = append(spec, 0, 2, 0, 2)
-	spec = common.PutU32(spec, 1)
-	spec = common.PutU16(spec, sha256Alg)
-	spec = common.PutU16(spec, sha256Size) // ends here: no vendorInfoSize byte
+	spec = putLE32(spec, 1)
+	spec = putLE16(spec, sha256Alg)
+	spec = putLE16(spec, sha256Size) // ends here: no vendorInfoSize byte
 	log := wrapLegacy(spec)
 	if _, err := ParseEventLog(log); err != ErrBadSpecID {
 		t.Fatalf("got %v want ErrBadSpecID", err)
@@ -194,11 +194,11 @@ func TestParseMissingVendorInfo(t *testing.T) {
 func TestParseTruncatedVendorInfo(t *testing.T) {
 	var spec []byte
 	spec = append(spec, specIDSignature...)
-	spec = common.PutU32(spec, 0)
+	spec = putLE32(spec, 0)
 	spec = append(spec, 0, 2, 0, 2)
-	spec = common.PutU32(spec, 1)
-	spec = common.PutU16(spec, sha256Alg)
-	spec = common.PutU16(spec, sha256Size)
+	spec = putLE32(spec, 1)
+	spec = putLE16(spec, sha256Alg)
+	spec = putLE16(spec, sha256Size)
 	spec = common.PutU8(spec, 8) // vendorInfoSize=8 but no vendor bytes follow
 	log := wrapLegacy(spec)
 	if _, err := ParseEventLog(log); err != ErrBadSpecID {
@@ -227,12 +227,12 @@ func TestParseEvent2Truncations(t *testing.T) {
 func TestParseEvent2UnknownAlg(t *testing.T) {
 	header := NewLogBuilder().Bytes()
 	var ev []byte
-	ev = common.PutU32(ev, 16)                       // PCRIndex
-	ev = common.PutU32(ev, 0x0d)                     // EventType
-	ev = common.PutU32(ev, 1)                        // count
-	ev = common.PutU16(ev, uint16(common.AlgSHA384)) // undeclared alg
+	ev = putLE32(ev, 16)                       // PCRIndex
+	ev = putLE32(ev, 0x0d)                     // EventType
+	ev = putLE32(ev, 1)                        // count
+	ev = putLE16(ev, uint16(common.AlgSHA384)) // undeclared alg
 	ev = append(ev, make([]byte, 48)...)             // a SHA-384-sized digest
-	ev = common.PutU32(ev, 0)                        // EventSize
+	ev = putLE32(ev, 0)                        // EventSize
 	log := append(append([]byte(nil), header...), ev...)
 	if _, err := ParseEventLog(log); err != ErrUnknownDigestAlg {
 		t.Fatalf("got %v want ErrUnknownDigestAlg", err)
@@ -243,10 +243,10 @@ func TestParseEvent2UnknownAlg(t *testing.T) {
 // buffer end (the spec-ID slice cannot be read).
 func TestParseHeaderSizeOverflow(t *testing.T) {
 	var out []byte
-	out = common.PutU32(out, 0)
-	out = common.PutU32(out, evNoAction)
+	out = putLE32(out, 0)
+	out = putLE32(out, evNoAction)
 	out = append(out, make([]byte, legacyDigestLen)...)
-	out = common.PutU32(out, 0xFFFFFFFF) // EventSize huge: bytes() short-buffers
+	out = putLE32(out, 0xFFFFFFFF) // EventSize huge: bytes() short-buffers
 	if _, err := ParseEventLog(out); err != ErrMalformedLog {
 		t.Fatalf("got %v want ErrMalformedLog", err)
 	}
@@ -268,11 +268,11 @@ func TestParseEmptyLogIsEvents(t *testing.T) {
 func buildSpecIDHeader(numAlgs uint32, algs []uint16) []byte {
 	var spec []byte
 	spec = append(spec, specIDSignature...)
-	spec = common.PutU32(spec, 0)
+	spec = putLE32(spec, 0)
 	spec = append(spec, 0, 2, 0, 2)
-	spec = common.PutU32(spec, numAlgs)
+	spec = putLE32(spec, numAlgs)
 	for _, a := range algs {
-		spec = common.PutU16(spec, a)
+		spec = putLE16(spec, a)
 	}
 	spec = common.PutU8(spec, 0) // vendorInfoSize
 	return wrapLegacy(spec)
@@ -281,10 +281,10 @@ func buildSpecIDHeader(numAlgs uint32, algs []uint16) []byte {
 // wrapLegacy wraps a spec-ID body in the legacy TCG_PCR_EVENT header event.
 func wrapLegacy(spec []byte) []byte {
 	var out []byte
-	out = common.PutU32(out, 0)
-	out = common.PutU32(out, evNoAction)
+	out = putLE32(out, 0)
+	out = putLE32(out, evNoAction)
 	out = append(out, make([]byte, legacyDigestLen)...)
-	out = common.PutU32(out, uint32(len(spec)))
+	out = putLE32(out, uint32(len(spec)))
 	out = append(out, spec...)
 	return out
 }

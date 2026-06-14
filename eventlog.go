@@ -112,15 +112,27 @@ func NewLogBuilder() *LogBuilder { return &LogBuilder{} }
 // ("TCG_PCR_EVENT2").
 func (b *LogBuilder) Add(pcr int, etype uint32, sha256Digest, data []byte) *LogBuilder {
 	e := b.events
-	e = common.PutU32(e, uint32(pcr))
-	e = common.PutU32(e, etype)
-	e = common.PutU32(e, 1) // count: SHA-256 only
-	e = common.PutU16(e, uint16(common.AlgSHA256))
+	e = putLE32(e, uint32(pcr))
+	e = putLE32(e, etype)
+	e = putLE32(e, 1) // count: SHA-256 only
+	e = putLE16(e, uint16(common.AlgSHA256))
 	e = append(e, sha256Digest...)
-	e = common.PutU32(e, uint32(len(data)))
+	e = putLE32(e, uint32(len(data)))
 	e = append(e, data...)
 	b.events = e
 	return b
+}
+
+// putLE16 / putLE32 append v to dst in LITTLE-endian order. The TCG event log
+// is little-endian (TCG PC Client Platform Firmware Profile, "Event Logging"),
+// unlike common's big-endian TPM-command-stream codec, so the builder and the
+// logReader use these LE helpers rather than common.PutU16/PutU32.
+func putLE16(dst []byte, v uint16) []byte {
+	return append(dst, byte(v), byte(v>>8))
+}
+
+func putLE32(dst []byte, v uint32) []byte {
+	return append(dst, byte(v), byte(v>>8), byte(v>>16), byte(v>>24))
 }
 
 // Bytes renders the full log: the legacy TCG_PCR_EVENT spec-ID header (which
@@ -130,22 +142,22 @@ func (b *LogBuilder) Bytes() []byte {
 	// TCG_EfiSpecIdEvent body.
 	var spec []byte
 	spec = append(spec, specIDSignature...)
-	spec = common.PutU32(spec, 0) // platformClass
-	spec = common.PutU8(spec, 0)  // specVersionMinor
-	spec = common.PutU8(spec, 2)  // specVersionMajor (TPM 2.0)
-	spec = common.PutU8(spec, 0)  // specErrata
-	spec = common.PutU8(spec, 2)  // uintnSize (8-byte UINTN)
-	spec = common.PutU32(spec, 1) // numberOfAlgorithms
-	spec = common.PutU16(spec, uint16(common.AlgSHA256))
-	spec = common.PutU16(spec, sha256Size) // digestSize
-	spec = common.PutU8(spec, 0)           // vendorInfoSize (no vendor info)
+	spec = putLE32(spec, 0)              // platformClass
+	spec = common.PutU8(spec, 0)         // specVersionMinor
+	spec = common.PutU8(spec, 2)         // specVersionMajor (TPM 2.0)
+	spec = common.PutU8(spec, 0)         // specErrata
+	spec = common.PutU8(spec, 2)         // uintnSize (8-byte UINTN)
+	spec = putLE32(spec, 1)              // numberOfAlgorithms
+	spec = putLE16(spec, uint16(common.AlgSHA256))
+	spec = putLE16(spec, sha256Size) // digestSize
+	spec = common.PutU8(spec, 0)     // vendorInfoSize (no vendor info)
 
 	// Legacy TCG_PCR_EVENT wrapper carrying the spec-ID event.
 	var out []byte
-	out = common.PutU32(out, 0)                         // PCRIndex
-	out = common.PutU32(out, evNoAction)                // EventType = EV_NO_ACTION
+	out = putLE32(out, 0)                                // PCRIndex
+	out = putLE32(out, evNoAction)                       // EventType = EV_NO_ACTION
 	out = append(out, make([]byte, legacyDigestLen)...) // SHA-1 digest (zero)
-	out = common.PutU32(out, uint32(len(spec)))
+	out = putLE32(out, uint32(len(spec)))
 	out = append(out, spec...)
 	out = append(out, b.events...)
 	return out
@@ -334,7 +346,7 @@ func (r *logReader) u16() (uint16, bool) {
 	if r.off+2 > len(r.b) {
 		return 0, false
 	}
-	v := binary.BigEndian.Uint16(r.b[r.off:])
+	v := binary.LittleEndian.Uint16(r.b[r.off:])
 	r.off += 2
 	return v, true
 }
@@ -343,7 +355,7 @@ func (r *logReader) u32() (uint32, bool) {
 	if r.off+4 > len(r.b) {
 		return 0, false
 	}
-	v := binary.BigEndian.Uint32(r.b[r.off:])
+	v := binary.LittleEndian.Uint32(r.b[r.off:])
 	r.off += 4
 	return v, true
 }

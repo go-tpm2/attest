@@ -198,9 +198,11 @@ func TestUnapprovedMeasurementErrorIsOther(t *testing.T) {
 
 // small big-endian append helpers (kept local so policy_test does not depend on
 // the common codec import directly).
-func appendU16(b []byte, v uint16) []byte { return append(b, byte(v>>8), byte(v)) }
+// appendU16/appendU32 write little-endian: the TCG event log is little-endian
+// (TCG PFP, "Event Logging"), so these test fixtures must match the parser.
+func appendU16(b []byte, v uint16) []byte { return append(b, byte(v), byte(v>>8)) }
 func appendU32(b []byte, v uint32) []byte {
-	return append(b, byte(v>>24), byte(v>>16), byte(v>>8), byte(v))
+	return append(b, byte(v), byte(v>>8), byte(v>>16), byte(v>>24))
 }
 
 // buildSpecIDHeaderAlg renders a legacy-wrapped spec-ID header declaring exactly
