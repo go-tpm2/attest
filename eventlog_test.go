@@ -150,7 +150,7 @@ func TestParseTruncatedAlgList(t *testing.T) {
 	var spec []byte
 	spec = append(spec, specIDSignature...)
 	spec = putLE32(spec, 0)          // platformClass
-	spec = append(spec, 0, 2, 0, 2)        // minor/major/errata/uintnSize
+	spec = append(spec, 0, 2, 0, 2)  // minor/major/errata/uintnSize
 	spec = putLE32(spec, 2)          // numberOfAlgorithms = 2
 	spec = putLE16(spec, sha256Alg)  // alg[0]
 	spec = putLE16(spec, sha256Size) // size[0] (then truncated)
@@ -166,7 +166,7 @@ func TestParseTruncatedAlgID(t *testing.T) {
 	spec = append(spec, specIDSignature...)
 	spec = putLE32(spec, 0)
 	spec = append(spec, 0, 2, 0, 2)
-	spec = putLE32(spec, 1)   // 1 algorithm
+	spec = putLE32(spec, 1)         // 1 algorithm
 	spec = common.PutU8(spec, 0x00) // 1 stray byte: cannot read u16 algID
 	log := wrapLegacy(spec)
 	if _, err := ParseEventLog(log); err != ErrBadSpecID {
@@ -231,7 +231,7 @@ func TestParseEvent2UnknownAlg(t *testing.T) {
 	ev = putLE32(ev, 0x0d)                     // EventType
 	ev = putLE32(ev, 1)                        // count
 	ev = putLE16(ev, uint16(common.AlgSHA384)) // undeclared alg
-	ev = append(ev, make([]byte, 48)...)             // a SHA-384-sized digest
+	ev = append(ev, make([]byte, 48)...)       // a SHA-384-sized digest
 	ev = putLE32(ev, 0)                        // EventSize
 	log := append(append([]byte(nil), header...), ev...)
 	if _, err := ParseEventLog(log); err != ErrUnknownDigestAlg {

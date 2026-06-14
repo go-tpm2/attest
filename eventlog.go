@@ -142,20 +142,20 @@ func (b *LogBuilder) Bytes() []byte {
 	// TCG_EfiSpecIdEvent body.
 	var spec []byte
 	spec = append(spec, specIDSignature...)
-	spec = putLE32(spec, 0)              // platformClass
-	spec = common.PutU8(spec, 0)         // specVersionMinor
-	spec = common.PutU8(spec, 2)         // specVersionMajor (TPM 2.0)
-	spec = common.PutU8(spec, 0)         // specErrata
-	spec = common.PutU8(spec, 2)         // uintnSize (8-byte UINTN)
-	spec = putLE32(spec, 1)              // numberOfAlgorithms
+	spec = putLE32(spec, 0)      // platformClass
+	spec = common.PutU8(spec, 0) // specVersionMinor
+	spec = common.PutU8(spec, 2) // specVersionMajor (TPM 2.0)
+	spec = common.PutU8(spec, 0) // specErrata
+	spec = common.PutU8(spec, 2) // uintnSize (8-byte UINTN)
+	spec = putLE32(spec, 1)      // numberOfAlgorithms
 	spec = putLE16(spec, uint16(common.AlgSHA256))
 	spec = putLE16(spec, sha256Size) // digestSize
 	spec = common.PutU8(spec, 0)     // vendorInfoSize (no vendor info)
 
 	// Legacy TCG_PCR_EVENT wrapper carrying the spec-ID event.
 	var out []byte
-	out = putLE32(out, 0)                                // PCRIndex
-	out = putLE32(out, evNoAction)                       // EventType = EV_NO_ACTION
+	out = putLE32(out, 0)                               // PCRIndex
+	out = putLE32(out, evNoAction)                      // EventType = EV_NO_ACTION
 	out = append(out, make([]byte, legacyDigestLen)...) // SHA-1 digest (zero)
 	out = putLE32(out, uint32(len(spec)))
 	out = append(out, spec...)
