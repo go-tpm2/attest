@@ -1,6 +1,9 @@
-# go-tpm2/attest CI — vet, gofmt, 100%-coverage gate, and a multi-arch
-# build matrix, on every push/PR. This is a pure-Go (CGO=0) module that is
-# NOT part of any workspace, so every Go invocation runs with GOWORK=off.
+# go-tpm2/attest CI — vet, gofmt, and a 100%-coverage gate that TESTS on
+# every 64-bit arch the go-tpm2 stack supports: amd64 + arm64 natively, and
+# riscv64/loong64/ppc64le/s390x cross-compiled and run under QEMU. s390x is
+# big-endian, which exercises the BIG-ENDIAN TPM 2.0 codec for real. This is
+# a pure-Go (CGO=0) module that is NOT part of any workspace, so every Go
+# invocation runs with GOWORK=off.
 
 name: ci
 
@@ -18,9 +21,17 @@ env:
   CGO_ENABLED: 0
 
 jobs:
+  # Native runners: full vet + gofmt + the 100%-coverage gate on amd64, and
+  # the same test run on a real arm64 host.
   test:
-    name: vet + gofmt + 100% coverage
-    runs-on: ubuntu-latest
+    name: vet + gofmt + 100% coverage (${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest,    arch: amd64 }
+          - { os: ubuntu-24.04-arm, arch: arm64 }
     steps:
       - uses: actions/checkout@v4
 
@@ -54,14 +65,20 @@ jobs:
           awk -v p="$pct" 'BEGIN { exit !(p+0 >= 100.0) }' || {
             echo "::error::coverage ${pct}% < 100.0%"; exit 1; }
 
-  build:
-    name: build (${{ matrix.goos }}/${{ matrix.goarch }})
+  # Emulated runners: cross-compile the test binary per package and RUN it
+  # under QEMU for the remaining 64-bit targets, enforcing the same 100%
+  # coverage gate. s390x is big-endian and validates the codec end-to-end.
+  emulated:
+    name: test (linux/${{ matrix.arch }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        goos: [linux]
-        goarch: [amd64, arm64, riscv64, loong64]
+        include:
+          - { arch: riscv64, image: "debian:trixie",                qemu: "rv64,v=true,vlen=128" }
+          - { arch: loong64, image: "ghcr.io/loong64/debian:trixie", qemu: "la464" }
+          - { arch: ppc64le, image: "debian:trixie",                qemu: "power9" }
+          - { arch: s390x,   image: "debian:trixie",                qemu: "qemu" }
     steps:
       - uses: actions/checkout@v4
 
@@ -70,10 +87,44 @@ jobs:
           go-version: stable
           check-latest: true
 
-      # Prove the package compiles cleanly on every 64-bit target the
-      # go-tpm2 stack supports — no arch-specific breakage slips in.
-      - name: go build
+      - run: go version
+
+      - name: register QEMU binfmt handlers
+        run: docker run --privileged --rm tonistiigi/binfmt --install all
+
+      # Compile one coverage-instrumented test binary per package, run each
+      # under QEMU, and aggregate into a single coverprofile so the same
+      # 100% gate applies on every emulated arch.
+      - name: cross-compile + run tests under QEMU
         env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-        run: go build ./...
+          GOOS: linux
+          GOARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/cov
+          : > /tmp/cover.merged
+          first=1
+          for pkg in $(go list ./...); do
+            bin="/tmp/$(echo "$pkg" | tr '/' '_').test"
+            cprofile="/tmp/$(echo "$pkg" | tr '/' '_').cov"
+            # Build the coverage-instrumented test binary for the target arch.
+            go test -c -cover -coverpkg=./... -o "$bin" "$pkg" || continue
+            [ -f "$bin" ] || continue
+            docker run --rm --platform "linux/${GOARCH}" \
+              -e QEMU_CPU="${{ matrix.qemu }}" \
+              -v /tmp:/tmp "${{ matrix.image }}" \
+              "$bin" -test.v -test.coverprofile="$cprofile"
+            if [ -f "$cprofile" ]; then
+              if [ "$first" = 1 ]; then
+                cat "$cprofile" >> /tmp/cover.merged
+                first=0
+              else
+                tail -n +2 "$cprofile" >> /tmp/cover.merged
+              fi
+            fi
+          done
+          go tool cover -func=/tmp/cover.merged | tee /tmp/cover.txt
+          pct=$(go tool cover -func=/tmp/cover.merged | tail -n 1 | awk '{print $3}' | tr -d '%')
+          echo "total coverage (linux/${GOARCH}): ${pct}%"
+          awk -v p="$pct" 'BEGIN { exit !(p+0 >= 100.0) }' || {
+            echo "::error::coverage ${pct}% < 100.0% on linux/${GOARCH}"; exit 1; }
