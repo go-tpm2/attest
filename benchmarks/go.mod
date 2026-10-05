@@ -6,7 +6,7 @@
 // google/go-tpm-based one) must call, used as the irreducible-cost baseline.
 module github.com/go-tpm2/attest/benchmarks
 
-go 1.24
+go 1.27.1
 
 require (
 	github.com/go-tpm2/attest v0.3.0
